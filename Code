@@ -1,0 +1,82 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import astropy.units as u
+import pandas as pd
+from scipy import stats
+
+# Make the axes better
+plt.rcParams['xtick.minor.visible'], plt.rcParams['xtick.top'] = True,True 
+plt.rcParams['ytick.minor.visible'], plt.rcParams['ytick.right'] = True,True 
+plt.rcParams['xtick.direction'], plt.rcParams['ytick.direction'] = 'in','in'
+
+# Make the font look nicer
+plt.rcParams["text.usetex"] = False
+plt.rcParams["text.latex.preamble"] = r"\usepackage{txfonts}"
+plt.rcParams['font.size'] = 18 
+
+# Formatting data into columns using Pandas
+data = pd.read_csv('ExoplanetsPeriodEcc.csv')
+per = np.array(data['PER'][1:], dtype=float)
+per_err = np.array(data['UPER'][1:], dtype=float)
+ecc = np.array(data['ECC'][1:], dtype=float)
+ecc_err = np.array(data['UECC'][1:], dtype=float)
+
+# Masking data to find the minimum eccentricity value (e_min)
+mask = ecc == 0
+mask1 = ecc > 0
+a = np.min(ecc[mask1])
+ecc[mask] = a
+
+# Histogram to find period ranges that contain 50-100 stars
+plt.hist(per, bins=25)
+plt.xlabel('Orbital Period [Days]')
+plt.ylabel('Number of Stars')
+plt.show()
+
+# Generating the matrix using NumPy and SciPy's stats module
+steps = 0.01
+EndA, EndB = 5, 5
+range_per = [15, 140]
+
+p_min = per > range_per[0]
+p_max = per < range_per[1]
+masker = (p_min) * (p_max)
+b = ecc[masker]
+
+alpha_arr = np.arange(steps, EndA, steps)
+beta_arr = np.arange(steps, EndB, steps)
+X, Y = np.meshgrid(alpha_arr, beta_arr)
+X = X[:, :, np.newaxis]
+Y = Y[:, :, np.newaxis]
+k = stats.beta(X, Y)
+matrix = np.sum(np.log(k.pdf(b)), axis=2)
+Z_max = np.where(matrix == np.max(matrix))
+
+# Defining our Wilks function
+matrix = np.array(matrix)
+def wilks(matrix, conf):
+    return matrix[np.where(matrix == np.max(matrix))] - 0.5 * stats.chi2.ppf(conf/100, df=2)
+
+# Plotting the confidence region using Matplotlib
+plt.figure(figsize=(12, 10))
+conf_int = 90
+line = wilks(matrix, conf_int)
+h = plt.pcolormesh(alpha_arr, beta_arr, matrix, shading='auto', cmap='magma')
+plt.colorbar(h)
+lineint = plt.contour(alpha_arr, beta_arr, matrix, levels=line, linestyles="--")
+plt.scatter(X[Z_max[0][0]][Z_max[1][0]], Y[Z_max[0][0]][Z_max[1][0]], marker='+', c='k', s=300, label='MLE')
+plt.clabel(lineint, levels=line, fmt=f"{conf_int} $\%%$")
+plt.xlabel(r'$\alpha$')
+plt.ylabel(r'$\beta$')
+plt.title('Period of 15 to 140 Days')
+plt.show()
+print(X[Z_max[0][0]][Z_max[1][0]], Y[Z_max[0][0]][Z_max[1][0]])
+
+# Plotting the eccentricity histogram with the beta distribution
+res = stats.beta.pdf(np.linspace(0, 1.0, 100), X[Z_max[0][0]][Z_max[1][0]], Y[Z_max[0][0]][Z_max[1][0]])
+plt.hist(ecc, density=True)
+plt.plot(np.linspace(0, 1, 100), res)
+plt.xlabel('Eccentricity')
+plt.ylabel('Number of Stars')
+plt.title('Period of 15 to 140 days')
+plt.show()
